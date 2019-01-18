@@ -1,1 +1,1 @@
-assert.strictEqual(this, undefined); // => undefined
+assert.strictEqual(undefined, undefined); // => undefined

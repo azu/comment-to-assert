@@ -55,7 +55,7 @@ export function wrapAssert(actualNode: any, expectedNode: any): any {
             ARGS
         });
     } else if (isIdentifier(expectedNode) && expectedNode.name === "NaN") {
-        return template`assert(isNaN(ACTUAL_NODE));`({
+        return template`assert.ok(isNaN(ACTUAL_NODE));`({
             ACTUAL_NODE
         });
     } else if (isNullLiteral(expectedNode)) {
