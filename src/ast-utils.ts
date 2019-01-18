@@ -59,20 +59,20 @@ export function wrapAssert(actualNode: any, expectedNode: any): any {
             ACTUAL_NODE
         });
     } else if (isNullLiteral(expectedNode)) {
-        return template`assert.equal(ACTUAL_NODE, null)`({
+        return template`assert.strictEqual(ACTUAL_NODE, null)`({
             ACTUAL_NODE
         });
     } else if (isIdentifier(expectedNode) && expectedNode.name === "undefined") {
-        return template`assert.equal(ACTUAL_NODE, undefined)`({
+        return template`assert.strictEqual(ACTUAL_NODE, undefined)`({
             ACTUAL_NODE
         });
     } else if (isLiteral(expectedNode)) {
-        return template`assert.equal(ACTUAL_NODE, EXPECTED_NODE)`({
+        return template`assert.strictEqual(ACTUAL_NODE, EXPECTED_NODE)`({
             ACTUAL_NODE,
             EXPECTED_NODE
         });
     } else {
-        return template`assert.deepEqual(ACTUAL_NODE, EXPECTED_NODE)`({
+        return template`assert.deepStrictEqual(ACTUAL_NODE, EXPECTED_NODE)`({
             ACTUAL_NODE,
             EXPECTED_NODE
         });
