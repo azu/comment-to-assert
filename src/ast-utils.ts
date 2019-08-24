@@ -8,7 +8,10 @@ import {
     isIdentifier,
     isLiteral,
     isNullLiteral,
-    isDirective
+    isDirective,
+    callExpression,
+    identifier,
+    stringLiteral
 } from "@babel/types";
 import template from "@babel/template";
 
@@ -32,81 +35,118 @@ function isConsole(node: any): node is CallExpression & { expression: any } {
     return isCallExpression(node) && (node.callee as any).object && (node.callee as any).object.name === "console";
 }
 
-function extractionBody(ast: any) {
-    return ast.body[0];
-}
-
 export const ERROR_COMMENT_PATTERN = /^([a-zA-Z]*?Error)/;
-export const PROMISE_COMMENT_PATTERN = /^Promise:\s*(.*?)\s*$/;
+export const PROMISE_RESOLVE_COMMENT_PATTERN = /^Resolve:\s*(.*?)\s*$/;
+export const PROMISE_REJECT_COMMENT_PATTERN = /^Reject:\s*(.*?)\s*$/;
 
 export interface wrapAssertOptions {
-    asyncCallbackName?: string;
+    // callback name before assert
+    assertBeforeCallbackName?: string;
+    // callback name after assert
+    assertAfterCallbackName?: string;
 }
 
-export function wrapAssert(actualNode: any, expectedNode: any, options: wrapAssertOptions = {}): any {
-    assert.notEqual(typeof expectedNode, "undefined");
-    const type = expectedNode.type || extractionBody(expectedNode).type;
+export function wrapAssert(
+    {
+        actualNode,
+        expectedNode,
+        commentExpression,
+        id
+    }: { actualNode: any; expectedNode: any; commentExpression: string; id: string },
+    options: wrapAssertOptions
+): any {
+    assert.notStrictEqual(typeof expectedNode, "undefined");
     const ACTUAL_NODE = actualNode;
     const EXPECTED_NODE = expectedNode;
+    const BEFORE_CALLBACK = options.assertBeforeCallbackName
+        ? callExpression(identifier(options.assertBeforeCallbackName), [stringLiteral(id)])
+        : undefined;
+    const AFTER_CALLBACK = options.assertAfterCallbackName
+        ? callExpression(identifier(options.assertAfterCallbackName), [stringLiteral(id)])
+        : undefined;
     if (isConsole(actualNode)) {
         const args = actualNode.arguments;
         const firstArgument = args[0];
-        return wrapAssert(firstArgument, expectedNode);
+        return wrapAssert(
+            {
+                actualNode: firstArgument,
+                expectedNode,
+                commentExpression,
+                id
+            },
+            options
+        );
     } else if (isIdentifier(expectedNode) && ERROR_COMMENT_PATTERN.test(expectedNode.name)) {
-        return template`assert.throws(function() {
+        return template`BEFORE_CALLBACK;assert.throws(function() {
                     ACTUAL_NODE
-               })`({
+               });AFTER_CALLBACK;`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
             ACTUAL_NODE
         });
-    } else if (type === "Promise") {
+    } else if (expectedNode.type === "Resolve") {
+        // getExpressionNodeFromCommentValue define the type
         const ARGS = isConsole(actualNode) ? actualNode.arguments[0] : actualNode;
-        // support callback
-        const asyncCallbackName = options.asyncCallbackName;
-        if (asyncCallbackName) {
-            return template`Promise.resolve(ARGS).then(v => {
-            ${wrapAssert({ type: "Identifier", name: "v" }, expectedNode.node)}
-            ${asyncCallbackName}(null, v);
-            return v;
-        }).catch(error => {
-            ${asyncCallbackName}(error);
-        })`({
-                ARGS
-            });
-        } else {
-            return template`Promise.resolve(ARGS).then(v => {
-            ${wrapAssert({ type: "Identifier", name: "v" }, expectedNode.node)}
+        return template`Promise.resolve(ARGS).then(v => {
+            ${wrapAssert(
+                {
+                    actualNode: { type: "Identifier", name: "v" },
+                    expectedNode: expectedNode.node,
+                    commentExpression,
+                    id
+                },
+                options
+            )}
             return v;
         });`({
-                ARGS
-            });
-        }
+            ARGS
+        });
+    } else if (expectedNode.type === "Reject") {
+        const ARGS = isConsole(actualNode) ? actualNode.arguments[0] : actualNode;
+        return template`BEFORE_CALLBACK;assert.rejects(ARGS);AFTER_CALLBACK;`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
+            ARGS
+        });
     } else if (isIdentifier(expectedNode) && expectedNode.name === "NaN") {
-        return template`assert.ok(isNaN(ACTUAL_NODE));`({
+        return template`BEFORE_CALLBACK;assert.ok(isNaN(ACTUAL_NODE));AFTER_CALLBACK;`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
             ACTUAL_NODE
         });
     } else if (isNullLiteral(expectedNode)) {
-        return template`assert.strictEqual(ACTUAL_NODE, null)`({
+        return template`BEFORE_CALLBACK;assert.strictEqual(ACTUAL_NODE, null);AFTER_CALLBACK;`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
             ACTUAL_NODE
         });
     } else if (isIdentifier(expectedNode) && expectedNode.name === "undefined") {
-        return template`assert.strictEqual(ACTUAL_NODE, undefined)`({
+        return template`BEFORE_CALLBACK;assert.strictEqual(ACTUAL_NODE, undefined);AFTER_CALLBACK`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
             ACTUAL_NODE
         });
     } else if (isLiteral(expectedNode)) {
         // Handle Directive Prorogue as string literal
         if (isDirective(ACTUAL_NODE)) {
-            return template`assert.strictEqual(ACTUAL_NODE, EXPECTED_NODE)`({
+            return template`BEFORE_CALLBACK;assert.strictEqual(ACTUAL_NODE, EXPECTED_NODE);AFTER_CALLBACK;`({
+                BEFORE_CALLBACK,
+                AFTER_CALLBACK,
                 ACTUAL_NODE: (ACTUAL_NODE.value as any).extra.raw,
                 EXPECTED_NODE
             });
         } else {
-            return template`assert.strictEqual(ACTUAL_NODE, EXPECTED_NODE)`({
+            return template`BEFORE_CALLBACK;assert.strictEqual(ACTUAL_NODE, EXPECTED_NODE);AFTER_CALLBACK;`({
+                BEFORE_CALLBACK,
+                AFTER_CALLBACK,
                 ACTUAL_NODE,
                 EXPECTED_NODE
             });
         }
     } else {
-        return template`assert.deepStrictEqual(ACTUAL_NODE, EXPECTED_NODE)`({
+        return template`BEFORE_CALLBACK;assert.deepStrictEqual(ACTUAL_NODE, EXPECTED_NODE);AFTER_CALLBACK;`({
+            BEFORE_CALLBACK,
+            AFTER_CALLBACK,
             ACTUAL_NODE,
             EXPECTED_NODE
         });

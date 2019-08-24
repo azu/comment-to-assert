@@ -5,6 +5,10 @@ import * as vm from "vm";
 import { toAssertFromSource } from "../src/comment-to-assert";
 
 const fixturesDir = path.join(__dirname, "snapshots");
+const trim = (s: unknown): string => {
+    return typeof s === "string" ? s.trim() : "";
+};
+
 describe("Snapshot testing", () => {
     fs.readdirSync(fixturesDir).map(caseName => {
         const normalizedTestName = caseName.replace(/-/g, " ");
@@ -24,8 +28,8 @@ describe("Snapshot testing", () => {
             }
             const expected = fs.readFileSync(expectedFilePath, "utf-8");
             assert.deepStrictEqual(
-                actual,
-                expected,
+                trim(actual),
+                trim(expected),
                 `
 ${fixtureDir}
 ${JSON.stringify(actual)}
@@ -34,12 +38,23 @@ ${JSON.stringify(actual)}
             if (typeof actual !== "string") {
                 throw new Error("actual is not string");
             }
-            if (options.asyncCallbackName) {
+            if (options.assertAfterCallbackName && options.assertBeforeCallbackName) {
+                // finish after all called
+                let actualCallCount = 0;
+                const totalCountOfAssert = actual.split(options.assertBeforeCallbackName).length - 1;
                 vm.runInContext(
                     actual,
                     vm.createContext({
                         assert,
-                        done
+                        [options.assertBeforeCallbackName]: () => {
+                            // nope
+                        },
+                        [options.assertAfterCallbackName]: () => {
+                            actualCallCount++;
+                            if (actualCallCount === totalCountOfAssert) {
+                                done();
+                            }
+                        }
                     })
                 );
             } else {
